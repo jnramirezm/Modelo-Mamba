@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Servicio principal para entrenamiento en modo testing
+  hepatic-vessel-testing:
+    build: .
+    container_name: hepatic-vessel-testing
+    volumes:
+      # Montar datos desde el host
+      - ${DATA_PATH:-./data}:/app/data:ro
+      # Montar directorio de outputs para persistencia
+      - ${OUTPUTS_PATH:-./outputs}:/app/outputs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+      - IS_TESTING=True
+      - MAMBA_VARIANT=simple
+      - N_EPOCHS=5
+      - BATCH_SIZE=2
+      - IMAGE_SIZE=128
+      - MAX_SAMPLES=20
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: python src/main.py
+
+  # Servicio para entrenamiento en modo producción
+  hepatic-vessel-production:
+    build: .
+    container_name: hepatic-vessel-production
+    volumes:
+      - ${DATA_PATH:-./data}:/app/data:ro
+      - ${OUTPUTS_PATH:-./outputs}:/app/outputs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+      - IS_TESTING=False
+      - MAMBA_VARIANT=simple
+      - N_EPOCHS=50
+      - BATCH_SIZE=8
+      - IMAGE_SIZE=256
+      - MAX_SAMPLES=1000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: python src/main.py
+
+  # Servicio para análisis de resultados
+  analysis:
+    build: .
+    container_name: hepatic-vessel-analysis
+    volumes:
+      - ${OUTPUTS_PATH:-./outputs}:/app/outputs
+    environment:
+      - PYTHONPATH=/app
+    command: python show_stats.py --compare
+
+  # Jupyter Lab para desarrollo interactivo
+  jupyter:
+    build: .
+    container_name: hepatic-vessel-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ${DATA_PATH:-./data}:/app/data:ro
+      - ${OUTPUTS_PATH:-./outputs}:/app/outputs
+      - ./src:/app/src
+      - ./notebooks:/app/notebooks
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/app
+      - IS_TESTING=True
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token=''
